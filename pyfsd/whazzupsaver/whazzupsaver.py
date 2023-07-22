@@ -1,3 +1,6 @@
+"""PyFSD PyFSDPlugin plugin :: whazzupsaver.py
+Version: 1
+"""
 from json import JSONEncoder, dump
 from typing import Any, Optional
 
