@@ -1,6 +1,9 @@
 """PyFSD MetarFetcher plugin :: awc_metar.py
-Version: 2
+Version: 3
 """
+from csv import reader
+from datetime import date
+from gzip import decompress
 from typing import Optional
 from urllib.error import ContentTooShortError, HTTPError, URLError
 from urllib.request import urlopen
@@ -35,16 +38,16 @@ class AWCMetarFetcher:
         try:
             result = {}
             with urlopen(
-                "https://beta.aviationweather.gov/cgi-bin/data/metar.php?ids=all"
+                "https://beta.aviationweather.gov/data/cache/metars.cache.csv.gz"
             ) as file:
-                lines = file.readlines()
-
-                for line in lines:
-                    metar = Metar(
-                        line.decode("ascii", "ignore").rstrip("\n"), strict=False
+                decoded_lines = (
+                    decompress(file.read()).decode("ascii", "ignore").splitlines()
+                )
+                for code, station, time, *_ in reader(decoded_lines[6:]):
+                    dt = date.fromisoformat(time.split("T")[0])
+                    result[station] = Metar(
+                        code, strict=False, month=dt.month, year=dt.year
                     )
-                    if metar.station_id is not None:
-                        result[metar.station_id] = metar
             return result
         except (ContentTooShortError, HTTPError, URLError):
             raise MetarNotAvailableError
