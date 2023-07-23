@@ -1,5 +1,5 @@
 """PyFSD MetarFetcher plugin :: xmairavt7_metar.py
-Version: 1
+Version: 2
 """
 from html.parser import HTMLParser
 from typing import NoReturn, Optional
@@ -17,9 +17,12 @@ class MetarPageParser(HTMLParser):
     metar_text: Optional[str] = None
 
     def handle_data(self, data: str) -> None:
-        if data.startswith("METAR ") or data.startswith("SPECI "):
+        if data.startswith("METAR "):
             assert self.metar_text is None
-            self.metar_text = data
+            self.metar_text = data.removeprefix("METAR ")
+        elif data.startswith("SPECI "):
+            assert self.metar_text is None
+            self.metar_text = data.removeprefix("SPECI ")
 
 
 @implementer(IPlugin, IMetarFetcher)
