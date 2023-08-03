@@ -1,5 +1,5 @@
 """PyFSD PyFSDPlugin plugin :: whazzup.py
-Version: 1
+Version: 2
 """
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
@@ -51,7 +51,15 @@ class WhazzupGenerator(BasePyFSDPlugin):
                 if client.type == "PILOT":
                     client_info["altitude"] = client.altitude
                     if heading_instead_pbh:
-                        client_info["heading"] = (client.pbh & 4092) >> 2
+                        # https://github.com/xpilot-project/xpilot \
+                        # /blob/b7a2375be88e8201c2c3fd8a353ace86f7ef49c3 \
+                        # /client/src/fsd/pdu/pdu_base.cpp#L73-L82
+                        heading = ((client.pbh >> 2) & 0x3FF) / 1024 * 360
+                        if heading < 0:
+                            heading += 360
+                        elif heading >= 360:
+                            heading -= 360
+                        client_info["heading"] = round(heading)
                     else:
                         client_info["pbh"] = client.pbh
 

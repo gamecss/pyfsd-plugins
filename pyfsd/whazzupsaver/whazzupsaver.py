@@ -47,7 +47,7 @@ class WhazzupSaverPlugin(BasePyFSDPlugin):
                     return super().default(o)
 
         data = whazzupGenerator.generateWhazzup(
-            heading_instead_pbh=bool(self.config["use_heading"])
+            heading_instead_pbh=self.config["use_heading"]
         )
         with open(self.config["filename"], "w") as file:
             dump(data, file, ensure_ascii=False, cls=Encoder)
@@ -69,7 +69,7 @@ class WhazzupSaverPlugin(BasePyFSDPlugin):
             )
             self.config = config
         self.task = LoopingCall(self.save)
-        self.task.start(int(self.config["refresh_time"]), now=False)
+        self.task.start(self.config["refresh_time"], now=False)
 
 
 plugin = WhazzupSaverPlugin()
