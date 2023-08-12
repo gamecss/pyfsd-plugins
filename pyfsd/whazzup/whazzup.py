@@ -19,7 +19,7 @@ class WhazzupGenerator(BasePyFSDPlugin):
     plugin_name = "whazzup"
     pyfsd: Optional["PyFSDService"] = None
 
-    def beforeStart(self, pyfsd: "PyFSDService", _) -> None:
+    def beforeStart(self, pyfsd: "PyFSDService", _: Optional[dict]) -> None:
         self.pyfsd = pyfsd
 
     def generateWhazzup(self, heading_instead_pbh: bool = False) -> dict:

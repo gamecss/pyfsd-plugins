@@ -29,7 +29,7 @@ class MetarPageParser(HTMLParser):
 class XMAirAVT7MetarFetcher:
     metar_source = "xmairavt7"
 
-    def fetch(self, _, icao: str) -> Optional[Metar]:
+    def fetch(self, _: dict, icao: str) -> Optional[Metar]:
         try:
             with urlopen(
                 "http://xmairavt7.xiamenair.com/WarningPage/AirportInfo"
@@ -44,7 +44,7 @@ class XMAirAVT7MetarFetcher:
         except (ContentTooShortError, HTTPError, URLError):
             return None
 
-    def fetchAll(self, _) -> NoReturn:
+    def fetchAll(self, _: dict) -> NoReturn:
         raise NotImplementedError
 
 

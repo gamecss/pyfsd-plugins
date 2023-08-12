@@ -20,7 +20,7 @@ from pyfsd.metar.fetch import IMetarFetcher, MetarInfoDict, MetarNotAvailableErr
 class AWCMetarFetcher:
     metar_source = "aviationweather"
 
-    def fetch(self, _, icao: str) -> Optional[Metar]:
+    def fetch(self, _: dict, icao: str) -> Optional[Metar]:
         try:
             with urlopen(
                 f"https://beta.aviationweather.gov/cgi-bin/data/metar.php?ids={icao}"
@@ -35,7 +35,7 @@ class AWCMetarFetcher:
         except (ContentTooShortError, HTTPError, URLError):
             return None
 
-    def fetchAll(self, _) -> MetarInfoDict:
+    def fetchAll(self, _: dict) -> MetarInfoDict:
         try:
             result = {}
             with urlopen(

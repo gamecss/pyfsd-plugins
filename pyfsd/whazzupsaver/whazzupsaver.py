@@ -2,6 +2,7 @@
 Version: 1
 """
 from json import JSONEncoder, dump
+from re import I
 from typing import Any, Optional
 
 from twisted.internet.task import LoopingCall
@@ -53,7 +54,9 @@ class WhazzupSaverPlugin(BasePyFSDPlugin):
             dump(data, file, ensure_ascii=False, cls=Encoder)
             file.truncate()
 
-    def beforeStart(self, _, config: Optional[dict]) -> None:
+    def beforeStart(  # type: ignore[no-untyped-def]
+        self, _, config: Optional[dict]
+    ) -> None:
         if config is None:
             self.config = DEFAULT_CONFIG
         else:
