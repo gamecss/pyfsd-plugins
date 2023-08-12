@@ -1,11 +1,23 @@
+# mypy: disable-error-code="no-any-return"
 """PyFSD PyFSDPlugin plugin :: httpapi.py
-Version: -2
+Version: -1
 """
 
 from json import JSONDecodeError, JSONEncoder, dumps, loads
 from re import compile
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Type, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
+from sqlalchemy.sql import exists, select
 from twisted.application.internet import TCPServer
 from twisted.internet.defer import Deferred
 from twisted.logger import Logger
@@ -15,9 +27,10 @@ from twisted.web.resource import Resource
 from twisted.web.server import NOT_DONE_YET, Site
 from zope.interface import implementer
 
-from ..define.utils import MayExist, verifyConfigStruct
-from ..plugin import BasePyFSDPlugin
-from ..service import config as all_config
+from pyfsd.db_tables import users as users_table
+from pyfsd.define.utils import MayExist, verifyConfigStruct
+from pyfsd.plugin import BasePyFSDPlugin
+from pyfsd.service import config as all_config
 
 try:
     from pyfsd.plugins.whazzup import whazzupGenerator
@@ -25,6 +38,7 @@ except ImportError:
     raise ImportError("httpapi plugin requires whazzup plugin.")
 
 if TYPE_CHECKING:
+    from alchimia.engine import TwistedResultProxy
     from twisted.python.failure import Failure
     from twisted.web.server import Request
 
@@ -35,7 +49,16 @@ encoder: Type[JSONEncoder]
 is_sha256_regex = compile("^[a-fA-F0-9]{64}$")
 
 
-def makeEncoder(encoding):
+def selectAllProxy(
+    handler: Callable,
+) -> Callable[["TwistedResultProxy"], None]:
+    def proxy(proxy: "TwistedResultProxy") -> None:
+        proxy.fetchall().addCallback(handler)
+
+    return proxy
+
+
+def makeEncoder(encoding: str) -> Type[JSONEncoder]:
     class Encoder(JSONEncoder):
         def default(self, o: Any) -> Any:
             assert config is not None
@@ -49,7 +72,7 @@ def makeEncoder(encoding):
 
 @implementer(IPlugin)
 class PluginTCPServer(TCPServer):
-    ...
+    pass
 
 
 @implementer(IPlugin)
@@ -59,7 +82,7 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
     isLeaf = True
     logger = Logger()
 
-    def beforeStart(self, pyfsd: "PyFSDService", _) -> None:
+    def beforeStart(self, pyfsd: "PyFSDService", _: Optional[dict]) -> None:
         self.pyfsd = pyfsd
 
     def render(self, request: "Request") -> Union[bytes, int]:
@@ -81,7 +104,7 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
             return dumps(result, ensure_ascii=False, cls=encoder).encode()
         elif isinstance(result, Deferred):
 
-            def errback(failure: "Failure"):
+            def errback(failure: "Failure") -> None:
                 self.logger.failure(
                     f"Error happend in {'renderJson_' + nativeString(request.method)}",
                     failure=failure,
@@ -107,33 +130,34 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
         request.setHeader("Content-Type", "application/json")
         if path == [b"whazzup.json"]:
             return whazzupGenerator.generateWhazzup(
-                heading_instead_pbh=config["use_heading"]
+                heading_instead_pbh=bool(config["use_heading"])
             )
         elif path[0] == b"query":
             if len(path) > 2:
                 request.setResponseCode(404)
                 return {"message": "Not Found"}
-            if self.pyfsd.db_pool is None:
+            if self.pyfsd.db_engine is None:
                 request.setResponseCode(503)
                 return {"message": "Service Unavailable"}
             if len(path) == 2:
                 # Query single
 
-                def handler(result: List[Tuple[str, int]]):
+                def handler(result: List[Tuple[int]]) -> None:
                     if len(result) == 0:
                         request.write(b'{"exist": false}')
                     else:
-                        request.write(b'{"exist": true, "rating": %d}' % result[0][1])
+                        request.write(b'{"exist": true, "rating": %d}' % result[0][0])
                     request.finish()
 
-                return self.pyfsd.db_pool.runQuery(
-                    "SELECT callsign, rating FROM users WHERE callsign = ?;",
-                    (path[1].decode(errors="replace"),),
-                ).addCallback(handler)
+                return self.pyfsd.db_engine.execute(
+                    select([users_table.c.rating]).where(
+                        users_table.c.callsign == path[1].decode(errors="replace")
+                    )
+                ).addCallback(selectAllProxy(handler))
             else:
                 # Query all
 
-                def handler(result: List[Tuple[str, int]]):
+                def handler(result: List[Tuple[str, int]]) -> None:
                     info: Dict[int, List[str]] = {}
                     for user in result:
                         callsign, rating = user
@@ -147,9 +171,9 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
                     )
                     request.finish()
 
-                return self.pyfsd.db_pool.runQuery(
-                    "SELECT callsign, rating FROM users;",
-                ).addCallback(handler)
+                return self.pyfsd.db_engine.execute(
+                    select([users_table.c.callsign, users_table.c.rating])
+                ).addCallback(selectAllProxy(handler))
         else:
             request.setResponseCode(404)
             return {"message": "Not Found"}
@@ -167,7 +191,7 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
             """
             try:
                 body = loads(
-                    request.content.read().decode(  # type: ignore[attr-defined]
+                    request.content.read().decode(  # type: ignore[union-attr]
                         errors="replace"
                     )
                 )
@@ -190,7 +214,7 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
             if not is_body:
                 return arg2
             else:
-                if self.pyfsd.db_pool is None:
+                if self.pyfsd.db_engine is None:
                     request.setResponseCode(503)
                     return {"message": "Service Unavailable"}
                 body = arg2
@@ -198,25 +222,27 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
                     request.setResponseCode(400)
                     return {"message": "Password must hashed by sha256"}
 
-                def sayDone(_):
+                def sayDone(_: "TwistedResultProxy") -> None:
                     request.write(b'{"message": "OK"}')
                     request.finish()
 
-                def checkIfExist(result: List[Tuple[str]]):
-                    if len(result) > 0:
+                def checkIfExist(result: List[Tuple[bool]]) -> None:
+                    if result[0][0]:
                         request.setResponseCode(409)
                         request.write(b'{"message": "Conflict"}')
                         request.finish()
                     else:
-                        self.pyfsd.db_pool.runQuery(  # type: ignore[union-attr]
-                            "INSERT INTO users VALUES (?, ?, ?);",
-                            (body["callsign"], body["password"], 1),
+                        self.pyfsd.db_engine.execute(  # type: ignore[union-attr]
+                            users_table.insert().values(
+                                callsign=body["callsign"],
+                                password=body["password"],
+                                rating=1,
+                            )
                         ).addCallback(sayDone)
 
-                return self.pyfsd.db_pool.runQuery(
-                    "SELECT callsign FROM users WHERE callsign = ?;",
-                    (body["callsign"],),
-                ).addCallback(checkIfExist)
+                return self.pyfsd.db_engine.execute(
+                    exists().where(users_table.c.callsign == body["callsign"]).select()
+                ).addCallback(selectAllProxy(checkIfExist))
         elif path == [b"modify"]:
             is_body, arg2 = checkBody(
                 {"callsign": str, "password": MayExist[str], "rating": MayExist[int]},
@@ -225,7 +251,7 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
             if not is_body:
                 return arg2
             else:
-                if self.pyfsd.db_pool is None:
+                if self.pyfsd.db_engine is None:
                     request.setResponseCode(503)
                     return {"message": "Service Unavailable"}
                 body = arg2
@@ -237,39 +263,31 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
                 if password is None and rating is None:
                     request.setResponseCode(400)
                     return {"message": "Must modify password or rating"}
-                args = []
+                values = {}
                 if password is not None:
-                    args.append(password)
+                    values["password"] = password
                 if rating is not None:
-                    args.append(rating)
-                args.append(body["callsign"])
+                    values["rating"] = rating
 
-                def sayDone(_):
+                def sayDone(_: "TwistedResultProxy") -> None:
                     request.write(b'{"message": "OK"}')
                     request.finish()
 
-                def checkIfExist(result: List[Tuple[str]]):
-                    if not len(result) > 0:
+                def checkIfExist(result: List[Tuple[bool]]) -> None:
+                    if not result[0][0]:
                         request.setResponseCode(404)
                         request.write(b'{"message": "User not found"}')
                         request.finish()
                     else:
-                        self.pyfsd.db_pool.runQuery(  # type: ignore[union-attr]
-                            "UPDATE users SET "
-                            f"{'password = ?' if password is not None else ''}"
-                            f"""{', ' if (
-                                password is not None
-                                and rating is not None
-                            ) else ''}"""
-                            f"{'rating = ?' if rating is not None else ''}"
-                            " WHERE callsign = ?",
-                            args,
+                        self.pyfsd.db_engine.execute(  # type: ignore[union-attr]
+                            users_table.update(
+                                users_table.c.callsign == body["callsign"]
+                            ).values(**values)
                         ).addCallback(sayDone)
 
-                return self.pyfsd.db_pool.runQuery(
-                    "SELECT callsign FROM users WHERE callsign = ?;",
-                    (body["callsign"],),
-                ).addCallback(checkIfExist)
+                return self.pyfsd.db_engine.execute(
+                    exists().where(users_table.c.callsign == body["callsign"]).select()
+                ).addCallback(selectAllProxy(checkIfExist))
         elif path == [b"login"]:
             is_body, arg2 = checkBody(
                 {"callsign": str, "password": str},
@@ -278,7 +296,7 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
             if not is_body:
                 return arg2
             else:
-                if self.pyfsd.db_pool is None:
+                if self.pyfsd.db_engine is None:
                     request.setResponseCode(503)
                     return {"message": "Service Unavailable"}
                 body = arg2
@@ -287,11 +305,11 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
                     request.setResponseCode(400)
                     return {"message": "Password must hashed by sha256"}
 
-                def handler(result: List[Tuple[str, str, int]]):
+                def handler(result: List[Tuple[str, int]]) -> None:
                     if len(result) == 0:
                         request.write(b'{"exist": false}')
                     else:
-                        _, hashed_password, rating = result[0]
+                        hashed_password, rating = result[0]
                         success = (
                             b"true" if hashed_password == body["password"] else b"false"
                         )
@@ -301,11 +319,11 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
                         )
                     request.finish()
 
-                return self.pyfsd.db_pool.runQuery(
-                    "SELECT callsign, password, rating FROM users "
-                    "WHERE callsign = ?;",
-                    (body["callsign"],),
-                ).addCallback(handler)
+                return self.pyfsd.db_engine.execute(
+                    select([users_table.c.password, users_table.c.rating]).where(
+                        users_table.c.callsign == body["callsign"]
+                    )
+                ).addCallback(selectAllProxy(handler))
         else:
             request.setResponseCode(404)
             return {"message": "Not Found"}
@@ -325,7 +343,7 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
             """
             try:
                 body = loads(
-                    request.content.read().decode(  # type: ignore[attr-defined]
+                    request.content.read().decode(  # type: ignore[union-attr]
                         errors="replace"
                     )
                 )
@@ -342,36 +360,34 @@ class HTTPAPIPlugin(BasePyFSDPlugin, Resource):
             return True, body
 
         if path == [b"delete"]:
-            is_body, arg2 = checkBody(
-                {"callsign": str}, check_token=True
-            )
+            is_body, arg2 = checkBody({"callsign": str}, check_token=True)
             if not is_body:
                 return arg2
             else:
-                if self.pyfsd.db_pool is None:
+                if self.pyfsd.db_engine is None:
                     request.setResponseCode(503)
                     return {"message": "Service Unavailable"}
                 body = arg2
 
-                def sayDone(_):
+                def sayDone(_: "TwistedResultProxy") -> None:
                     request.write(b'{"message": "OK"}')
                     request.finish()
 
-                def checkIfExist(result: List[Tuple[str]]):
-                    if not len(result) > 0:
+                def checkIfExist(result: List[Tuple[bool]]) -> None:
+                    if not result[0][0]:
                         request.setResponseCode(404)
                         request.write(b'{"message": "User not found"}')
                         request.finish()
                     else:
-                        self.pyfsd.db_pool.runQuery(  # type: ignore[union-attr]
-                            "DELETE FROM users WHERE callsign = ?;",
-                            (body["callsign"],),
+                        self.pyfsd.db_engine.execute(  # type: ignore[union-attr]
+                            users_table.delete(
+                                users_table.c.callsign == body["callsign"]
+                            )
                         ).addCallback(sayDone)
 
-                return self.pyfsd.db_pool.runQuery(
-                    "SELECT callsign FROM users WHERE callsign = ?;",
-                    (body["callsign"],),
-                ).addCallback(checkIfExist)
+                return self.pyfsd.db_engine.execute(
+                    exists().where(users_table.c.callsign == body["callsign"]).select()
+                ).addCallback(selectAllProxy(checkIfExist))
         else:
             request.setResponseCode(404)
             return {"message": "Not Found"}
