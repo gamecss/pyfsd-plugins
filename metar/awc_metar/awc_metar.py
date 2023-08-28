@@ -1,7 +1,7 @@
 """PyFSD MetarFetcher plugin :: awc_metar.py
-Version: 4
+Version: 5
 """
-from datetime import date
+from datetime import datetime
 from gzip import open as open_gzip
 from typing import Optional
 from urllib.error import ContentTooShortError, HTTPError, URLError
@@ -60,12 +60,18 @@ class AWCMetarFetcher:
                             or raw_text is None
                         ):
                             continue
-                        metar_date = date.fromisoformat(observation_time.split("T")[0])
+                        try:
+                            metar_date = datetime.fromisoformat(
+                                observation_time.removesuffix("Z")
+                            )
+                            opt = {"month": metar_date.month, "year": metar_date.year}
+                        except ValueError:
+                            opt = {}
+
                         result[station_id] = Metar(
                             raw_text,
                             strict=False,
-                            month=metar_date.month,
-                            year=metar_date.year,
+                            **opt,
                         )
             return result
         except (ContentTooShortError, HTTPError, URLError):

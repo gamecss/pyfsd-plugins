@@ -1,15 +1,14 @@
 """PyFSD PyFSDPlugin plugin :: whazzupsaver.py
-Version: 1
+Version: 2
 """
 from json import JSONEncoder, dump
-from re import I
 from typing import Any, Optional
 
 from twisted.internet.task import LoopingCall
 from twisted.plugin import IPlugin
 from zope.interface import implementer
 
-from pyfsd.define.utils import verifyConfigStruct
+from pyfsd.define.config_check import verifyConfigStruct
 from pyfsd.plugin import BasePyFSDPlugin
 
 try:

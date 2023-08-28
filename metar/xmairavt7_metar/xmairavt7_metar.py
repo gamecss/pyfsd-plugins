@@ -1,5 +1,5 @@
 """PyFSD MetarFetcher plugin :: xmairavt7_metar.py
-Version: 2
+Version: 3
 """
 from html.parser import HTMLParser
 from typing import NoReturn, Optional
@@ -17,12 +17,13 @@ class MetarPageParser(HTMLParser):
     metar_text: Optional[str] = None
 
     def handle_data(self, data: str) -> None:
-        if data.startswith("METAR "):
-            assert self.metar_text is None
-            self.metar_text = data.removeprefix("METAR ")
-        elif data.startswith("SPECI "):
-            assert self.metar_text is None
-            self.metar_text = data.removeprefix("SPECI ")
+        if self.lasttag == "font":
+            if data.startswith("METAR "):
+                assert self.metar_text is None
+                self.metar_text = data.removeprefix("METAR ")
+            elif data.startswith("SPECI "):
+                assert self.metar_text is None
+                self.metar_text = data.removeprefix("SPECI ")
 
 
 @implementer(IPlugin, IMetarFetcher)
@@ -32,8 +33,7 @@ class XMAirAVT7MetarFetcher:
     def fetch(self, _: dict, icao: str) -> Optional[Metar]:
         try:
             with urlopen(
-                "http://xmairavt7.xiamenair.com/WarningPage/AirportInfo"
-                f"?arp4code={icao}"
+                f"http://xmairavt7.xiamenair.com/WarningPage?WarningAirports={icao}"
             ) as html_file:
                 parser = MetarPageParser()
                 parser.feed(html_file.read().decode())
