@@ -55,6 +55,6 @@ DELETE /users/callsign 删除呼号
 Authorization: Bearer 上文配置的token  
   
 注：所有接口都会返回json，但是一些接口通过http状态码就能判断结果，文档就省去了  
-返回HTTP 400绝对不正常，建议查看返回的json的title字段  
+返回HTTP 400不正常，建议查看返回的json的title字段  
 返回HTTP 500不正常，服务器错误，建议提个issue并附日志  
 返回HTTP 501不正常，看一下是不是用错方法了，只支持GET, POST或者DELETE方法  
