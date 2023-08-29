@@ -4,10 +4,9 @@ Version: 2
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from pyfsd.plugin import BasePyFSDPlugin
 from twisted.plugin import IPlugin
 from zope.interface import implementer
-
-from pyfsd.plugin import BasePyFSDPlugin
 
 if TYPE_CHECKING:
     from pyfsd.service import PyFSDService

@@ -10,10 +10,9 @@ from xml.etree.ElementTree import ParseError
 from xml.etree.ElementTree import parse as parseXml
 
 from metar.Metar import Metar
+from pyfsd.metar.fetch import IMetarFetcher, MetarInfoDict, MetarNotAvailableError
 from twisted.plugin import IPlugin
 from zope.interface import implementer
-
-from pyfsd.metar.fetch import IMetarFetcher, MetarInfoDict, MetarNotAvailableError
 
 
 @implementer(IPlugin, IMetarFetcher)
@@ -62,7 +61,9 @@ class AWCMetarFetcher:
                             continue
                         try:
                             metar_date = datetime.fromisoformat(
-                                observation_time.removesuffix("Z")
+                                observation_time[:-1]
+                                if observation_time.startswith("Z")
+                                else observation_time
                             )
                             opt = {"month": metar_date.month, "year": metar_date.year}
                         except ValueError:

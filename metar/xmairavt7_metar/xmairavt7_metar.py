@@ -7,10 +7,9 @@ from urllib.error import ContentTooShortError, HTTPError, URLError
 from urllib.request import urlopen
 
 from metar.Metar import Metar
+from pyfsd.metar.fetch import IMetarFetcher
 from twisted.plugin import IPlugin
 from zope.interface import implementer
-
-from pyfsd.metar.fetch import IMetarFetcher
 
 
 class MetarPageParser(HTMLParser):
@@ -20,10 +19,10 @@ class MetarPageParser(HTMLParser):
         if self.lasttag == "font":
             if data.startswith("METAR "):
                 assert self.metar_text is None
-                self.metar_text = data.removeprefix("METAR ")
+                self.metar_text = data[6:]
             elif data.startswith("SPECI "):
                 assert self.metar_text is None
-                self.metar_text = data.removeprefix("SPECI ")
+                self.metar_text = data[6:]
 
 
 @implementer(IPlugin, IMetarFetcher)

@@ -4,12 +4,11 @@ Version: 2
 from json import JSONEncoder, dump
 from typing import Any, Optional
 
+from pyfsd.define.config_check import verifyConfigStruct
+from pyfsd.plugin import BasePyFSDPlugin
 from twisted.internet.task import LoopingCall
 from twisted.plugin import IPlugin
 from zope.interface import implementer
-
-from pyfsd.define.config_check import verifyConfigStruct
-from pyfsd.plugin import BasePyFSDPlugin
 
 try:
     from pyfsd.plugins.whazzup import whazzupGenerator

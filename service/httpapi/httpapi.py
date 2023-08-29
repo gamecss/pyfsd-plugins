@@ -17,6 +17,14 @@ from typing import (
     Union,
 )
 
+from pyfsd.db_tables import users as users_table
+from pyfsd.define.config_check import (
+    ConfigKeyError,
+    MayExist,
+    verifyAllConfigStruct,
+    verifyConfigStruct,
+)
+from pyfsd.plugin import IServiceBuilder
 from sqlalchemy.sql import exists, select
 from twisted.application.internet import TCPServer
 from twisted.internet.defer import Deferred
@@ -26,15 +34,6 @@ from twisted.python.compat import nativeString
 from twisted.web.resource import Resource
 from twisted.web.server import NOT_DONE_YET, Site
 from zope.interface import implementer
-
-from pyfsd.db_tables import users as users_table
-from pyfsd.define.config_check import (
-    ConfigKeyError,
-    MayExist,
-    verifyAllConfigStruct,
-    verifyConfigStruct,
-)
-from pyfsd.plugin import IServiceBuilder
 
 try:
     from pyfsd.plugins.whazzup import whazzupGenerator
@@ -170,7 +169,7 @@ class JSONResource(Resource):
         available_methods = []
         for name in dir(self):
             if name.startswith("renderJson_"):
-                available_methods.append(name.removeprefix("renderJson_"))
+                available_methods.append(name[11:])
         request.setHeader("Allow", ", ".join(available_methods))
         return b""
 
@@ -269,7 +268,7 @@ class DBAPIResource(JSONResource):
                 "title": "Authorization failure",
                 "detail": "Accept 'Authorization: Bearer' header only",
             }
-        elif authorization.removeprefix("Bearer ") != self.token:
+        elif authorization[7:] != self.token:
             request.setResponseCode(401)
             request.setHeader("Content-Type", "application/problem+json")
             request.setHeader(
